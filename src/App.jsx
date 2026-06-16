@@ -65,12 +65,25 @@ const ghostBtn = { padding:"12px 20px", borderRadius:12, border:`1px solid ${C.b
 
 // ─── API ──────────────────────────────────────────────────────────────────────
 async function callClaude(prompt, maxTokens=1000) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
-    method:"POST", headers:{"Content-Type":"application/json"},
-    body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:maxTokens, messages:[{role:"user",content:prompt}] }),
-  });
+  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Geen API key gevonden");
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.error?.message || "API fout");
+  }
   const data = await res.json();
-  return data.content?.map(b=>b.text||"").join("") || "";
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
 }
 
 // ─── PROMPTS ─────────────────────────────────────────────────────────────────
@@ -232,7 +245,7 @@ export default function CareerAssistant() {
       setLoadingStep(2);
       setResult({ profile:profileText, matches });
     } catch(e) {
-      setResult({ profile:"Er ging iets mis. Probeer opnieuw.", matches:[] });
+      setResult({ profile:`Fout: ${e.message}`, matches:[] });
     } finally {
       setLoading(false);
       setScreen(FLOW.length);
