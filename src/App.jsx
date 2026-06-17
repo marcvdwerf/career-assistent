@@ -28,7 +28,7 @@ const FLOW = [
   { id:"intro", type:"intro", emoji:"👋", title:"Even eerlijk zijn tegen jezelf.", sub:"Dit is geen saai formulier. Dit is een gesprek.\n\nAan het einde weet je precies wat voor werk bij jou past, waar je energie van krijgt — en wat je absoluut moet vermijden.\n\nDuurt zo'n 5 minuten. En het is de moeite waard.", cta:"Laten we gaan →" },
   { id:"naam", type:"text", block:"Wie ben jij?", emoji:"🙂", vraag:"Hoe heet je?", sub:"Gewoon je voornaam is prima.", placeholder:"bijv. Sophie", field:"naam" },
   { id:"leeftijd", type:"single", block:"Wie ben jij?", emoji:"📅", vraag:(p)=>`${p.naam}, hoe oud ben je?`, sub:"Niet om te oordelen — puur voor context.", field:"leeftijd", options:["18–24","25–30","31–35","36–42","43–50","50+"] },
-  { id:"werkervaring_jaren", type:"single", block:"Wie ben jij?", emoji:"💼", vraag:"Hoeveel jaar werkervaring heb je?", sub:"Inclusief stages en bijbanen.", field:"werkErvaringJaren", options:["Ik begin net","1–3 jaar","3–6 jaar","6–10 jaar","10–15 jaar","15+ jaar"] },
+  { id:"werkervaring_jaren", type:"single", block:"Wie ben jij?", emoji:"💼", vraag:"Hoeveel jaar werkervaring heb je?", sub:"Inclusief stages & bijbanen.", field:"werkErvaringJaren", options:["Ik begin net","1–3 jaar","3–6 jaar","6–10 jaar","10–15 jaar","15+ jaar"] },
   { id:"werk_nu", type:"textarea", block:"Wie ben jij?", emoji:"📍", vraag:"Wat doe je op dit moment voor werk?", sub:"Als je niet werkt: wat deed je het laatst?", placeholder:"bijv. Ik werk als accountmanager maar zit er niet helemaal op mijn plek...", field:"werkNu" },
   { id:"opleiding", type:"textarea", block:"Wie ben jij?", emoji:"🎓", vraag:"Wat heb je gestudeerd of geleerd?", sub:"Formeel of informeel — alles telt.", placeholder:"bijv. HBO Commerciële Economie, verder veel zelf geleerd...", field:"opleiding" },
   { id:"moment_trots", type:"textarea", block:"Jouw karakter", emoji:"🏆", vraag:"Noem één moment uit je werk- of studietijd waar je echt trots op bent.", sub:"Groot of klein — wat voelde goed? Waarom?", placeholder:"bijv. Ik organiseerde een event voor 200 mensen terwijl mijn leidinggevende uitviel...", field:"momentTrots" },
@@ -63,27 +63,35 @@ const inp = { width:"100%", background:C.card, border:`1px solid ${C.border}`, b
 const primaryBtn = (on) => ({ padding:"13px 28px", borderRadius:12, border:"none", fontSize:15, fontWeight:700, cursor:on?"pointer":"not-allowed", background:on?"linear-gradient(135deg,#1f6feb,#58a6ff)":C.subtle, color:on?"#fff":C.muted, transition:"all 0.2s", letterSpacing:"-0.01em", boxShadow:on?"0 4px 20px rgba(88,166,255,0.2)":"none" });
 const ghostBtn = { padding:"12px 20px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:500 };
 
-// ─── API ──────────────────────────────────────────────────────────────────────
-async function callClaude(prompt, maxTokens=1000) {
-  const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-  if (!apiKey) throw new Error("Geen API key gevonden");
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ role: "user", parts: [{ text: prompt }] }],
-        generationConfig: { maxOutputTokens: maxTokens, temperature: 0.7 },
-      }),
-    }
-  );
+// ─── OPENROUTER API ───────────────────────────────────────────────────────────
+async function callOpenRouter(prompt, maxTokens=1000) {
+  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
+  if (!apiKey) throw new Error("Geen OpenRouter API key gevonden");
+
+  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      // Optioneel voor OpenRouter rankings/analytics:
+      "HTTP-Referer": window.location.origin,
+      "X-Title": "Career Assistant App",
+    },
+    body: JSON.stringify({
+      model: "google/gemini-2.5-flash", // Je kunt hier ook 'meta-llama/llama-3.3-70b-instruct' of 'anthropic/claude-3.5-sonnet' gebruiken
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens,
+      temperature: 0.7,
+    }),
+  });
+
   if (!res.ok) {
     const err = await res.json();
     throw new Error(err.error?.message || "API fout");
   }
+
   const data = await res.json();
-  return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+  return data.choices?.[0]?.message?.content || "";
 }
 
 // ─── PROMPTS ─────────────────────────────────────────────────────────────────
@@ -233,9 +241,9 @@ export default function CareerAssistant() {
     setLoading(true);
     try {
       setLoadingStep(0);
-      const profileText = await callClaude(buildProfilePrompt(answers), 1000);
+      const profileText = await callOpenRouter(buildProfilePrompt(answers), 1000);
       setLoadingStep(1);
-      const matchRaw = await callClaude(buildMatchPrompt(answers), 1500);
+      const matchRaw = await callOpenRouter(buildMatchPrompt(answers), 1500);
       let matches = [];
       try {
         const clean = matchRaw.replace(/```json|```/g,"").trim();
@@ -365,15 +373,14 @@ function ResultView({ answers, result, onRestart }) {
   const handleGenerate = async (match, vacatureTekst) => {
     setSelectedMatch(match); setCv(""); setBrief(""); setTab("docs");
     setGenStep("cv");
-    const cvText = await callClaude(buildCVPrompt(answers, match.functie));
+    const cvText = await callOpenRouter(buildCVPrompt(answers, match.functie));
     setCv(cvText);
     setGenStep("brief");
-    const briefText = await callClaude(buildBriefPrompt(answers, match, vacatureTekst||""));
+    const briefText = await callOpenRouter(buildBriefPrompt(answers, match, vacatureTekst||""));
     setBrief(briefText);
     setGenStep(null);
   };
 
-  // Parse profile sections
   const sections = (result.profile||"").split(/\n(?=## )/).map(s=>s.trim()).filter(Boolean);
 
   const TABS = [
@@ -384,7 +391,6 @@ function ResultView({ answers, result, onRestart }) {
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',-apple-system,sans-serif" }}>
-
       {/* Sticky nav */}
       <div style={{ position:"sticky", top:0, zIndex:10, background:"rgba(13,17,23,0.96)", backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}` }}>
         <div style={{ maxWidth:700, margin:"0 auto", padding:"0 16px" }}>
@@ -403,154 +409,102 @@ function ResultView({ answers, result, onRestart }) {
       </div>
 
       <div style={{ maxWidth:700, margin:"0 auto", padding:"28px 16px 60px" }}>
+        {/* Render content op basis van actieve tab (Profielschets/Matches/Docs) */}
+        {tab === "profiel" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {sections.map((sec, idx) => {
+              const lines = sec.split("\n");
+              const title = lines[0].replace("## ", "").trim();
+              const content = lines.slice(1).join("\n").trim();
+              const theme = SECTION_COLORS[title] || { color: C.text, bg: C.surface };
 
-        {/* ── PROFIELSCHETS ── */}
-        {tab==="profiel" && (
-          <div>
-            <div style={{ textAlign:"center", marginBottom:28 }}>
-              <div style={{ fontSize:38, marginBottom:10 }}>🎉</div>
-              <h2 style={{ fontSize:24, fontWeight:800, margin:"0 0 6px", letterSpacing:"-0.02em" }}>{answers.naam ? `${answers.naam}, dit ben jij.` : "Dit ben jij."}</h2>
-              <p style={{ color:C.muted, margin:0, fontSize:14 }}>Eerlijk. Persoonlijk. Klaar om mee te werken.</p>
-            </div>
-            {sections.map((section,i)=>{
-              const lines = section.split("\n");
-              const title = lines[0].replace(/^##\s*/,"").trim();
-              const body = lines.slice(1).join("\n").trim();
-              const s = SECTION_COLORS[title]||{color:C.accent,bg:C.accentDim};
               return (
-                <div key={i} style={{ background:s.bg, border:`1px solid ${s.color}22`, borderRadius:16, padding:"20px 22px", marginBottom:12 }}>
-                  <div style={{ fontSize:11, fontWeight:800, color:s.color, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>{title}</div>
-                  <div style={{ fontSize:14, lineHeight:1.85, color:C.text, whiteSpace:"pre-wrap" }}>{body}</div>
+                <div key={idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
+                  <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: theme.color, display: "inline-block", padding: "4px 12px", borderRadius: 8, background: theme.bg }}>
+                    {title}
+                  </h3>
+                  <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.7, whiteSpace: "pre-line" }}>{content}</p>
                 </div>
               );
             })}
-            <div style={{ marginTop:20, background:C.accentDim, border:`1px solid ${C.accentBorder}`, borderRadius:14, padding:"18px 20px", display:"flex", justifyContent:"space-between", alignItems:"center", gap:12, flexWrap:"wrap" }}>
-              <div>
-                <div style={{ fontWeight:700, fontSize:15, marginBottom:3 }}>Klaar voor de volgende stap?</div>
-                <div style={{ fontSize:13, color:C.muted }}>Bekijk welke functies écht bij jou passen.</div>
-              </div>
-              <button onClick={()=>setTab("matches")} style={{ padding:"11px 22px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#1f6feb,#58a6ff)", color:"#fff", fontWeight:700, fontSize:13, cursor:"pointer", flexShrink:0 }}>Bekijk matches →</button>
-            </div>
           </div>
         )}
 
-        {/* ── MATCHES ── */}
-        {tab==="matches" && (
-          <div>
-            <div style={{ textAlign:"center", marginBottom:24 }}>
-              <h2 style={{ fontSize:22, fontWeight:800, margin:"0 0 6px", letterSpacing:"-0.02em" }}>Jouw beste matches</h2>
-              <p style={{ color:C.muted, margin:0, fontSize:14 }}>Gerangschikt op basis van jouw energie, waarden en werkstijl.</p>
-            </div>
-
-            {(!result.matches||result.matches.length===0) && (
-              <div style={{ textAlign:"center", padding:"40px 20px", color:C.muted }}>
-                <div style={{ fontSize:36, marginBottom:12 }}>😕</div>
-                <div>Geen matches gevonden. Probeer opnieuw.</div>
-                <button onClick={onRestart} style={{ marginTop:16, padding:"10px 20px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, cursor:"pointer", fontFamily:"inherit" }}>↺ Opnieuw beginnen</button>
-              </div>
-            )}
-
-            {[...(result.matches||[])].sort((a,b)=>b.fit-a.fit).map((m,i)=>(
-              <div key={i} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:"22px", marginBottom:14 }}>
-                <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:14 }}>
+        {tab === "matches" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {result.matches?.map((m, idx) => (
+              <div key={idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
-                    <div style={{ fontWeight:800, fontSize:18, marginBottom:3 }}>{m.functie}</div>
-                    <div style={{ fontSize:13, color:C.accent, fontWeight:600 }}>{m.sector}</div>
+                    <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{m.functie}</h3>
+                    <span style={{ fontSize: 12, color: C.muted }}>{m.sector}</span>
                   </div>
-                  <div style={{ fontWeight:900, fontSize:22, borderRadius:12, padding:"6px 14px", lineHeight:1.2, textAlign:"center", background:m.fit>=80?C.greenDim:m.fit>=65?C.yellowDim:C.redDim, color:m.fit>=80?C.green:m.fit>=65?C.yellow:C.red, border:`1px solid ${m.fit>=80?C.green:m.fit>=65?C.yellow:C.red}25`, flexShrink:0 }}>
-                    {m.fit}%<div style={{ fontSize:10, fontWeight:600, opacity:0.7 }}>match</div>
+                  <div style={{ background: C.greenDim, color: C.green, padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
+                    {m.fit}% Fit
                   </div>
                 </div>
-                <div style={{ display:"flex", flexDirection:"column", gap:7, marginBottom:16 }}>
-                  {[{icon:"✓",color:C.green,text:m.waarom},{icon:"⚡",color:C.orange,text:m.energie},{icon:"⚠",color:C.yellow,text:m.risico}].map((row,j)=>(
-                    <div key={j} style={{ display:"flex", gap:10, alignItems:"flex-start" }}>
-                      <span style={{ color:row.color, fontWeight:700, fontSize:13, flexShrink:0 }}>{row.icon}</span>
-                      <span style={{ fontSize:13, color:"#c9d1d9", lineHeight:1.55 }}>{row.text}</span>
-                    </div>
-                  ))}
-                </div>
-
-                {showVacInput===m.functie && (
-                  <div style={{ marginBottom:14 }}>
-                    <div style={{ fontSize:12, color:C.muted, marginBottom:6 }}>Plak een vacaturetekst voor een nóg persoonlijkere brief (optioneel)</div>
-                    <textarea style={{ width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:10, padding:"10px 12px", color:C.text, fontSize:13, outline:"none", resize:"vertical", fontFamily:"inherit", boxSizing:"border-box" }} rows={4} value={vacTekst} onChange={e=>setVacTekst(e.target.value)} placeholder="Plak hier de vacaturetekst..." />
+                <p style={{ fontSize: 14, lineHeight: 1.6, margin: "0 0 16px", color: C.text }}>{m.waarom}</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20, fontSize: 12 }}>
+                  <div>
+                    <span style={{ color: C.muted, display: "block", marginBottom: 2 }}>Energie-balans:</span>
+                    <span style={{ color: C.orange }}>{m.energie}</span>
                   </div>
-                )}
-
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  <a href={m.zoekUrl} target="_blank" rel="noopener noreferrer" style={{ fontSize:12, color:C.accent, textDecoration:"none", background:C.accentDim, border:`1px solid ${C.accentBorder}`, borderRadius:8, padding:"8px 14px", fontWeight:600 }}>🔍 Zoek vacatures</a>
-                  <button onClick={()=>{
-                    if (showVacInput===m.functie) { handleGenerate(m, vacTekst); setShowVacInput(null); }
-                    else { setShowVacInput(m.functie); setVacTekst(""); }
-                  }} style={{ fontSize:12, color:"#fff", background:"linear-gradient(135deg,#1f6feb,#58a6ff)", border:"none", borderRadius:8, padding:"8px 14px", fontWeight:600, cursor:"pointer" }}>
-                    {showVacInput===m.functie ? "✦ Genereer CV & brief →" : "✦ CV & brief maken"}
+                  <div>
+                    <span style={{ color: C.muted, display: "block", marginBottom: 2 }}>Aandachtspunt:</span>
+                    <span style={{ color: C.red }}>{m.risico}</span>
+                  </div>
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button onClick={() => handleGenerate(m)} style={{ ...primaryBtn(true), padding: "10px 20px", fontSize: 13, flex: 1 }}>
+                    ✨ Genereer CV & Brief
                   </button>
-                  {showVacInput===m.functie && (
-                    <button onClick={()=>{handleGenerate(m,""); setShowVacInput(null);}} style={{ fontSize:12, color:C.muted, background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"8px 14px", cursor:"pointer", fontFamily:"inherit" }}>Zonder vacaturetekst →</button>
-                  )}
+                  <a href={m.zoekUrl} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding: "10px 16px", fontSize: 13, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+                    Zoek Jobs ↗
+                  </a>
                 </div>
               </div>
             ))}
           </div>
         )}
 
-        {/* ── CV & BRIEF ── */}
-        {tab==="docs" && (
-          <div>
-            {!selectedMatch ? (
-              <div style={{ textAlign:"center", padding:"60px 20px" }}>
-                <div style={{ fontSize:46, marginBottom:14 }}>📄</div>
-                <div style={{ fontSize:18, fontWeight:700, marginBottom:8 }}>Nog geen functie gekozen</div>
-                <p style={{ color:C.muted, marginBottom:20, fontSize:14 }}>Ga naar Matches, kies een functie en klik op "CV & brief maken".</p>
-                <button onClick={()=>setTab("matches")} style={{ padding:"12px 24px", borderRadius:10, border:"none", background:"linear-gradient(135deg,#1f6feb,#58a6ff)", color:"#fff", fontWeight:700, cursor:"pointer", fontSize:14 }}>Bekijk matches →</button>
+        {tab === "docs" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+            {genStep ? (
+              <div style={{ textAlign: "center", padding: 40 }}>
+                <div style={{ fontSize: 32, marginBottom: 12, display: "inline-block", animation: "spin 2s linear infinite" }}>⟳</div>
+                <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>Genereer documenten...</h3>
+                <span style={{ fontSize: 12, color: C.accent }}>{genStep === "cv" ? "CV profiel opbouwen..." : "Brief schrijven..."}</span>
               </div>
-            ) : (
-              <div>
-                <div style={{ textAlign:"center", marginBottom:24 }}>
-                  <h2 style={{ fontSize:21, fontWeight:800, margin:"0 0 4px", letterSpacing:"-0.02em" }}>{selectedMatch.functie}</h2>
-                  <div style={{ fontSize:13, color:C.accent, fontWeight:600 }}>{selectedMatch.sector}</div>
+            ) : selectedMatch ? (
+              <>
+                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.accent }}>Personal CV-Profile ({selectedMatch.functie})</h3>
+                    <button onClick={() => copy(cv, "cv")} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>
+                      {copied === "cv" ? "Kopieer ✓" : "Kopieer document"}
+                    </button>
+                  </div>
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-line" }}>{cv}</p>
                 </div>
 
-                {genStep && (
-                  <div style={{ textAlign:"center", padding:"28px", background:C.accentDim, borderRadius:14, marginBottom:20, border:`1px solid ${C.accentBorder}` }}>
-                    <div style={{ fontSize:22, marginBottom:8, display:"inline-block", animation:"spin 1.5s linear infinite" }}>⟳</div>
-                    <div style={{ fontSize:14, color:C.accent, fontWeight:600 }}>{genStep==="cv"?"CV-profiel schrijven...":"Sollicitatiebrief schrijven..."}</div>
-                  </div>
-                )}
-
-                {cv && (
-                  <div style={{ marginBottom:16 }}>
-                    <div style={{ fontSize:11, fontWeight:800, color:C.green, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>👤 CV Profiel</div>
-                    <div style={{ background:C.greenDim, border:`1px solid ${C.green}22`, borderRadius:14, padding:"20px 22px", marginBottom:8 }}>
-                      <p style={{ margin:0, fontSize:15, lineHeight:1.85, color:C.text, whiteSpace:"pre-wrap" }}>{cv}</p>
-                    </div>
-                    <button onClick={()=>copy(cv,"cv")} style={{ width:"100%", padding:"10px", borderRadius:10, background:copied==="cv"?C.greenDim:"rgba(255,255,255,0.04)", border:`1px solid ${copied==="cv"?"rgba(63,185,80,0.3)":C.border}`, color:copied==="cv"?C.green:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-                      {copied==="cv"?"✓ Gekopieerd!":"Kopieer CV profiel"}
+                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
+                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.accent }}>Sollicitatiebrief</h3>
+                    <button onClick={() => copy(brief, "brief")} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>
+                      {copied === "brief" ? "Kopieer ✓" : "Kopieer document"}
                     </button>
                   </div>
-                )}
-
-                {brief && (
-                  <div style={{ marginBottom:16 }}>
-                    <div style={{ fontSize:11, fontWeight:800, color:C.accent, textTransform:"uppercase", letterSpacing:"0.1em", marginBottom:10 }}>✉️ Sollicitatiebrief</div>
-                    <div style={{ background:C.accentDim, border:`1px solid ${C.accentBorder}`, borderRadius:14, padding:"20px 22px", marginBottom:8 }}>
-                      <p style={{ margin:0, fontSize:15, lineHeight:1.85, color:C.text, whiteSpace:"pre-wrap" }}>{brief}</p>
-                    </div>
-                    <button onClick={()=>copy(brief,"brief")} style={{ width:"100%", padding:"10px", borderRadius:10, background:copied==="brief"?C.accentDim:"rgba(255,255,255,0.04)", border:`1px solid ${copied==="brief"?C.accentBorder:C.border}`, color:copied==="brief"?C.accent:C.muted, fontSize:13, fontWeight:600, cursor:"pointer", fontFamily:"inherit" }}>
-                      {copied==="brief"?"✓ Gekopieerd!":"Kopieer sollicitatiebrief"}
-                    </button>
-                  </div>
-                )}
-
-                {!genStep && brief && (
-                  <button onClick={()=>setTab("matches")} style={{ width:"100%", marginTop:8, padding:"12px", borderRadius:10, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:13, cursor:"pointer", fontFamily:"inherit" }}>← Andere functie kiezen</button>
-                )}
+                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-line" }}>{brief}</p>
+                </div>
+              </>
+            ) : (
+              <div style={{ textAlign: "center", padding: 40, color: C.muted, fontSize: 14 }}>
+                Ga naar de <b>🎯 Matches</b> tab en klik op "Genereer CV & Brief" bij een functie om documenten te maken.
               </div>
             )}
           </div>
         )}
       </div>
-      <style>{`@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}} *{box-sizing:border-box}`}</style>
     </div>
   );
 }
