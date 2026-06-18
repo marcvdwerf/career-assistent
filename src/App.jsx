@@ -78,7 +78,7 @@ async function callOpenRouter(prompt, maxTokens=1000) {
       "X-Title": "Career Assistant App",
     },
     body: JSON.stringify({
-      model: "google/gemini-2.5-flash", // Je kunt hier ook 'meta-llama/llama-3.3-70b-instruct' of 'anthropic/claude-3.5-sonnet' gebruiken
+      model: "openrouter/free", // Gratis auto-router: kiest zelf een beschikbaar gratis model. Géén kans op kosten, ook niet als de gratis-modellenlijst wijzigt.
       messages: [{ role: "user", content: prompt }],
       max_tokens: maxTokens,
       temperature: 0.7,
@@ -357,6 +357,66 @@ export default function CareerAssistant() {
   );
 }
 
+// ─── PRINT / PDF DOCUMENT ──────────────────────────────────────────────────────
+// Statisch, lichtgekleurd rapport dat ALLEEN zichtbaar wordt via @media print.
+// De gebruiker klikt op "Exporteer als PDF" -> window.print() -> kiest "Opslaan als PDF"
+// in het browser-printdialoog. Bevat profielschets + matches + (indien gegenereerd) CV & brief.
+function PrintDocument({ answers, result, selectedMatch, cv, brief }) {
+  const sections = (result.profile || "").split(/\n(?=## )/).map(s => s.trim()).filter(Boolean);
+  const today = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
+
+  return (
+    <div className="print-only" style={{ background: "#fff", color: "#111", padding: 32, fontFamily: "'Inter',-apple-system,sans-serif" }}>
+      <div style={{ marginBottom: 28, borderBottom: "2px solid #111", paddingBottom: 12 }}>
+        <h1 style={{ margin: "0 0 4px", fontSize: 24 }}>{answers.naam ? `Profiel van ${answers.naam}` : "Carrièreprofiel"}</h1>
+        <span style={{ fontSize: 12, color: "#555" }}>Gegenereerd op {today}</span>
+      </div>
+
+      <h2 style={{ fontSize: 18, margin: "0 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Profielschets</h2>
+      {sections.map((sec, idx) => {
+        const lines = sec.split("\n");
+        const title = lines[0].replace("## ", "").trim();
+        const content = lines.slice(1).join("\n").trim();
+        return (
+          <div key={idx} style={{ marginBottom: 18, pageBreakInside: "avoid" }}>
+            <h3 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 700 }}>{title}</h3>
+            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line" }}>{content}</p>
+          </div>
+        );
+      })}
+
+      {result.matches?.length > 0 && (
+        <>
+          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Functiematches</h2>
+          {result.matches.map((m, idx) => (
+            <div key={idx} style={{ marginBottom: 16, pageBreakInside: "avoid" }}>
+              <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700 }}>{m.functie} — {m.fit}% fit</h3>
+              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>{m.sector}</div>
+              <p style={{ margin: "0 0 4px", fontSize: 13, lineHeight: 1.5 }}>{m.waarom}</p>
+              <div style={{ fontSize: 12 }}><b>Energie:</b> {m.energie}</div>
+              <div style={{ fontSize: 12 }}><b>Aandachtspunt:</b> {m.risico}</div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {selectedMatch && cv && (
+        <>
+          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>CV-profiel ({selectedMatch.functie})</h2>
+          <p style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line", pageBreakInside: "avoid" }}>{cv}</p>
+        </>
+      )}
+
+      {selectedMatch && brief && (
+        <>
+          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Sollicitatiebrief ({selectedMatch.functie})</h2>
+          <p style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line", pageBreakInside: "avoid" }}>{brief}</p>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── RESULT VIEW ──────────────────────────────────────────────────────────────
 function ResultView({ answers, result, onRestart }) {
   const [tab, setTab] = useState("profiel");
@@ -391,12 +451,25 @@ function ResultView({ answers, result, onRestart }) {
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',-apple-system,sans-serif" }}>
+      {/* Print-stylesheet: op het scherm onzichtbaar, bij printen/PDF-export draait het om */}
+      <style>{`
+        @media print {
+          body { background: #fff !important; }
+          .no-print { display: none !important; }
+          .print-only { display: block !important; }
+        }
+        .print-only { display: none; }
+      `}</style>
+
       {/* Sticky nav */}
-      <div style={{ position:"sticky", top:0, zIndex:10, background:"rgba(13,17,23,0.96)", backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}` }}>
+      <div className="no-print" style={{ position:"sticky", top:0, zIndex:10, background:"rgba(13,17,23,0.96)", backdropFilter:"blur(12px)", borderBottom:`1px solid ${C.border}` }}>
         <div style={{ maxWidth:700, margin:"0 auto", padding:"0 16px" }}>
           <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"12px 0 8px" }}>
             <div style={{ fontWeight:800, fontSize:15 }}>{answers.naam||"Jouw profiel"}</div>
-            <button onClick={onRestart} style={{ fontSize:12, color:C.muted, background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontFamily:"inherit" }}>↺ Opnieuw</button>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>window.print()} style={{ fontSize:12, color:C.accent, background:C.accentDim, border:`1px solid ${C.accentBorder}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontFamily:"inherit", fontWeight:600 }}>📄 Exporteer als PDF</button>
+              <button onClick={onRestart} style={{ fontSize:12, color:C.muted, background:"transparent", border:`1px solid ${C.border}`, borderRadius:8, padding:"5px 12px", cursor:"pointer", fontFamily:"inherit" }}>↺ Opnieuw</button>
+            </div>
           </div>
           <div style={{ display:"flex", gap:2 }}>
             {TABS.map(t=>(
@@ -408,7 +481,7 @@ function ResultView({ answers, result, onRestart }) {
         </div>
       </div>
 
-      <div style={{ maxWidth:700, margin:"0 auto", padding:"28px 16px 60px" }}>
+      <div className="no-print" style={{ maxWidth:700, margin:"0 auto", padding:"28px 16px 60px" }}>
         {/* Render content op basis van actieve tab (Profielschets/Matches/Docs) */}
         {tab === "profiel" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -505,6 +578,9 @@ function ResultView({ answers, result, onRestart }) {
           </div>
         )}
       </div>
+
+      {/* Volledig print-rapport: onzichtbaar op scherm, verschijnt enkel in het printdialoog/PDF */}
+      <PrintDocument answers={answers} result={result} selectedMatch={selectedMatch} cv={cv} brief={brief} />
     </div>
   );
 }
