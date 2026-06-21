@@ -29,7 +29,7 @@ const LS_SCREEN  = "career_assistant_screen_v1";
 
 // ─── FLOW ─────────────────────────────────────────────────────────────────────
 const FLOW = [
-  { id:"intro", type:"intro", emoji:"👋", title:"Even eerlijk zijn tegen jezelf.", sub:"Dit is geen saai formulier. Dit is een gesprek.\n\nAan het einde weet je precies wat voor werk bij jou past, waar je energie van krijgt — en wat je absoluut moet vermijden.\n\nDuurt zo'n 5 minuten. En het is de moeite waard.", cta:"Laten we gaan →" },
+  { id:"intro", type:"intro", emoji:"👋", title:"Even eerlijk zijn tegen jezelf.", sub:"Dit is geen saai formulier.\n\nAan het einde weet je precies wat voor werk bij jou past, waar je energie van krijgt — en wat je absoluut moet vermijden.\n\nDuurt zo'n 5 minuten. En het is de moeite waard.", cta:"Laten we gaan →" },
   { id:"naam", type:"text", block:"Wie ben jij?", emoji:"🙂", vraag:"Hoe heet je?", sub:"Gewoon je voornaam is prima.", placeholder:"bijv. Sophie", field:"naam" },
   { id:"leeftijd", type:"single", block:"Wie ben jij?", emoji:"📅", vraag:(p)=>`${p.naam}, hoe oud ben je?`, sub:"Niet om te oordelen — puur voor context.", field:"leeftijd", options:["18–24","25–30","31–35","36–42","43–50","50+"] },
   { id:"werkervaring_jaren", type:"single", block:"Wie ben jij?", emoji:"💼", vraag:"Hoeveel jaar werkervaring heb je?", sub:"Inclusief stages & bijbanen.", field:"werkErvaringJaren", options:["Ik begin net","1–3 jaar","3–6 jaar","6–10 jaar","10–15 jaar","15+ jaar"] },
