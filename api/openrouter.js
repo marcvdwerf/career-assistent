@@ -33,7 +33,7 @@ export default async function handler(req, res) {
   }
 
   const body = {
-    model: "openrouter/free",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
     messages,
     max_tokens: maxTokens || 1000,
     temperature: 0.7,
