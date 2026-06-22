@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 
-// ─── DESIGN TOKENS ────────────────────────────────────────────────────────────
+// ─── DESIGN TOKENS ───────────────────────────────────────────────────────────
 const C = {
   bg: "#0d1117", surface: "#161b22", card: "#1c2333",
   border: "rgba(255,255,255,0.08)", accent: "#58a6ff",
@@ -14,22 +14,18 @@ const C = {
 };
 
 const SECTION_COLORS = {
-  "Wie ben jij?":              { color: C.accent,  bg: C.accentDim },
-  "Jouw superkrachten":        { color: C.green,   bg: C.greenDim },
-  "Jouw valkuilen":            { color: C.yellow,  bg: C.yellowDim },
-  "Wat jou energie geeft ⚡":  { color: C.orange,  bg: C.orangeDim },
-  "Wat energie kost 🪫":       { color: C.red,     bg: C.redDim },
-  "Jouw hobby's als spiegel":  { color: C.purple,  bg: C.purpleDim },
-  "Waar jij naartoe gaat":     { color: C.green,   bg: C.greenDim },
+  "Wie ben jij?":             { color: C.accent,  bg: C.accentDim },
+  "Jouw superkrachten":       { color: C.green,   bg: C.greenDim },
+  "Jouw valkuilen":           { color: C.yellow,  bg: C.yellowDim },
+  "Wat jou energie geeft ⚡": { color: C.orange,  bg: C.orangeDim },
+  "Wat energie kost 🪫":      { color: C.red,     bg: C.redDim },
+  "Jouw hobby's als spiegel": { color: C.purple,  bg: C.purpleDim },
+  "Waar jij naartoe gaat":    { color: C.green,   bg: C.greenDim },
 };
 
-// ─── LOCALSTORAGE KEYS ────────────────────────────────────────────────────────
-const LS_ANSWERS = "career_assistant_answers_v1";
-const LS_SCREEN  = "career_assistant_screen_v1";
-
-// ─── FLOW ─────────────────────────────────────────────────────────────────────
+// ─── FLOW ────────────────────────────────────────────────────────────────────
 const FLOW = [
-  { id:"intro", type:"intro", emoji:"👋", title:"Even eerlijk zijn tegen jezelf.", sub:"Dit is geen saai formulier.\n\nAan het einde weet je precies wat voor werk bij jou past, waar je energie van krijgt — en wat je absoluut moet vermijden.\n\nDuurt zo'n 5 minuten. En het is de moeite waard.", cta:"Laten we gaan →" },
+  { id:"intro", type:"intro", emoji:"👋", title:"Even eerlijk zijn tegen jezelf.", sub:"Dit is geen saai formulier. Dit is een gesprek.\n\nAan het einde weet je precies wat voor werk bij jou past, waar je energie van krijgt — en wat je absoluut moet vermijden.\n\nDuurt zo'n 5 minuten. En het is de moeite waard.", cta:"Laten we gaan →" },
   { id:"naam", type:"text", block:"Wie ben jij?", emoji:"🙂", vraag:"Hoe heet je?", sub:"Gewoon je voornaam is prima.", placeholder:"bijv. Sophie", field:"naam" },
   { id:"leeftijd", type:"single", block:"Wie ben jij?", emoji:"📅", vraag:(p)=>`${p.naam}, hoe oud ben je?`, sub:"Niet om te oordelen — puur voor context.", field:"leeftijd", options:["18–24","25–30","31–35","36–42","43–50","50+"] },
   { id:"werkervaring_jaren", type:"single", block:"Wie ben jij?", emoji:"💼", vraag:"Hoeveel jaar werkervaring heb je?", sub:"Inclusief stages & bijbanen.", field:"werkErvaringJaren", options:["Ik begin net","1–3 jaar","3–6 jaar","6–10 jaar","10–15 jaar","15+ jaar"] },
@@ -62,46 +58,52 @@ const FLOW = [
 
 const QUESTION_SCREENS = FLOW.filter(f => !["intro","generating"].includes(f.type));
 
-// ─── STYLE HELPERS ────────────────────────────────────────────────────────────
+// ─── STYLE HELPERS ───────────────────────────────────────────────────────────
 const inp = { width:"100%", background:C.card, border:`1px solid ${C.border}`, borderRadius:12, padding:"13px 15px", color:C.text, fontSize:15, outline:"none", boxSizing:"border-box", fontFamily:"inherit", lineHeight:1.6 };
 const primaryBtn = (on) => ({ padding:"13px 28px", borderRadius:12, border:"none", fontSize:15, fontWeight:700, cursor:on?"pointer":"not-allowed", background:on?"linear-gradient(135deg,#1f6feb,#58a6ff)":C.subtle, color:on?"#fff":C.muted, transition:"all 0.2s", letterSpacing:"-0.01em", boxShadow:on?"0 4px 20px rgba(88,166,255,0.2)":"none" });
 const ghostBtn = { padding:"12px 20px", borderRadius:12, border:`1px solid ${C.border}`, background:"transparent", color:C.muted, fontSize:14, cursor:"pointer", fontFamily:"inherit", fontWeight:500 };
 
-// ─── OPENROUTER API ───────────────────────────────────────────────────────────
-async function callOpenRouter(prompt, maxTokens=1000, { jsonMode=false } = {}) {
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY;
-  if (!apiKey) throw new Error("Geen OpenRouter API key gevonden");
+// ─── LOCAL PERSISTENCE ───────────────────────────────────────────────────────
+const STORAGE_KEY = "career_assistant_v2";
 
-  const body = {
-    model: "openrouter/free",
-    messages: [{ role: "user", content: prompt }],
-    max_tokens: maxTokens,
-    temperature: 0.7,
-  };
-  if (jsonMode) {
-    // OpenRouter ondersteunt response_format zoals OpenAI; sommige gratis modellen negeren 't,
-    // maar dan blijft de fallback-parser nog steeds werken.
-    body.response_format = { type: "json_object" };
-  }
+function loadSaved() {
+  try { const raw = localStorage.getItem(STORAGE_KEY); return raw ? JSON.parse(raw) : null; }
+  catch { return null; }
+}
 
-  const res = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-      "HTTP-Referer": window.location.origin,
-      "X-Title": "Career Assistant App",
-    },
-    body: JSON.stringify(body),
+function getInitialState() {
+  const saved = loadSaved();
+  if (!saved) return { screen:0, answers:{}, result:null, docsByMatch:{} };
+  if (saved.result) return { screen:FLOW.length, answers:saved.answers||{}, result:saved.result, docsByMatch:saved.docsByMatch||{} };
+  // Nooit herstellen OP het generating-scherm zelf
+  const safeScreen = Math.min(saved.screen ?? 0, FLOW.length - 2);
+  return { screen:safeScreen, answers:saved.answers||{}, result:null, docsByMatch:{} };
+}
+
+// ─── API (via serverless proxy — key blijft server-side) ─────────────────────
+async function callOpenRouter(prompt, { maxTokens=1000, jsonMode=false }={}) {
+  const res = await fetch("/api/openrouter", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ messages:[{ role:"user", content:prompt }], maxTokens, jsonMode }),
   });
-
-  if (!res.ok) {
-    const err = await res.json().catch(()=>({}));
-    throw new Error(err.error?.message || `API fout (${res.status})`);
-  }
-
   const data = await res.json();
+  if (!res.ok) throw new Error(data.error || "API fout");
   return data.choices?.[0]?.message?.content || "";
+}
+
+function parseMatches(raw) {
+  try {
+    const clean = raw.replace(/```json|```/g,"").trim();
+    const parsed = JSON.parse(clean);
+    if (Array.isArray(parsed)) return parsed;
+    if (parsed && Array.isArray(parsed.matches)) return parsed.matches;
+  } catch {}
+  try {
+    const s = raw.indexOf("["); const e = raw.lastIndexOf("]");
+    if (s !== -1 && e !== -1) return JSON.parse(raw.slice(s,e+1));
+  } catch {}
+  return [];
 }
 
 // ─── PROMPTS ─────────────────────────────────────────────────────────────────
@@ -132,21 +134,12 @@ Schrijf de schets met EXACT deze headers (gebruik ## ervoor):
 }
 
 function buildMatchPrompt(p) {
-  return `Geef 4 functie/sector-matches op basis van dit profiel. Reageer ALLEEN met geldig JSON in dit exacte formaat:
-{"matches":[{"functie":"...","sector":"...","fit":85,"waarom":"...","energie":"...","risico":"...","zoekUrl":"..."}, ...]}
-
-Eisen per match:
-- functie: concrete functietitel
-- sector: sector naam
-- fit: integer 0-100
-- waarom: 1 zin waarom dit past bij dit profiel
-- energie: "Hoog/Middel/Laag — korte toelichting"
-- risico: 1 concreet risico of aandachtspunt
-- zoekUrl: LinkedIn jobs URL, format https://www.linkedin.com/jobs/search/?keywords=<functie>&location=Netherlands
+  return `Geef 4 functie/sector-matches op basis van dit profiel. Reageer ALLEEN met een geldig JSON-object, geen uitleg, geen markdown.
 
 Profiel: ${(p.sterkePunten||[]).slice(0,4).join(", ")}. Energie: ${(p.energieGeeft||[]).slice(0,3).join(", ")}. Killers: ${(p.energieVreet||[]).slice(0,3).join(", ")}. Cultuur: ${(p.cultuur||[]).join(", ")}. Skills: ${(p.vaardighedenHeb||[]).slice(0,4).join(", ")}. Wil leren: ${(p.vaardighedenWil||[]).slice(0,3).join(", ")}. Droom: ${p.droomFunctie||"?"}. Bedrijf: ${p.bedrijfType||"?"}. Locatie: ${p.locatie||"Nederland"}.
 
-Geef precies 4 matches. Geen uitleg, geen markdown — alleen het JSON-object.`;
+Geef een JSON-object met een "matches" array van 4 objecten:
+{"matches":[{"functie":"Functietitel","sector":"Sector naam","fit":85,"waarom":"1 zin waarom dit past","energie":"Hoog/Middel/Laag — korte toelichting","risico":"1 concreet aandachtspunt","zoekUrl":"https://www.linkedin.com/jobs/search/?keywords=Functietitel&location=Netherlands"}]}`;
 }
 
 function buildCVPrompt(p, functie) {
@@ -161,49 +154,14 @@ function buildBriefPrompt(p, match, vacatureTekst) {
   return `Schrijf een sollicitatiebrief voor een sollicitatie als ${match.functie} in de ${match.sector} sector. Persoonlijk, direct, menselijk. NIET beginnen met "Hierbij solliciteer ik". Concrete voorbeelden gebruiken. Warm maar zelfverzekerd afsluiten.
 
 Profiel: trots moment: ${p.momentTrots||"?"}. Energie-dag: ${p.momentEnergie||"?"}. Sterke punten: ${(p.sterkePunten||[]).join(", ")}. Valkuil + aanpak: ${(p.valkuilen||[]).slice(0,2).join(", ")}. Wil leren: ${(p.vaardighedenWil||[]).slice(0,3).join(", ")}. Cultuurfit: ${(p.cultuur||[]).join(", ")}.
-${vacatureTekst ? `\nVACATURETEKST (gebruik dit om de brief specifiek te maken — verwijs naar concrete eisen, taken of bedrijfswaarden uit deze tekst):\n${vacatureTekst}` : ""}
+${vacatureTekst ? `\nVacaturetekst: ${vacatureTekst}` : ""}
 
-Structuur: 1) Opening die pakt — ${vacatureTekst ? "waarom juist déze rol/dit bedrijf (verwijs naar de vacaturetekst)" : "waarom deze sector/rol?"} 2) Concrete werkervaring met echt voorbeeld 3) Wat jij toevoegt ${vacatureTekst ? "— koppel aan wat in de vacature gevraagd wordt" : ""} 4) Warme directe afsluiting.
+Structuur: 1) Opening die pakt 2) Concrete werkervaring met echt voorbeeld 3) Wat jij toevoegt 4) Warme directe afsluiting.
 
 OUTPUT: alleen de brief.`;
 }
 
-// ─── MATCH PARSING (robuust, met losse fallback) ─────────────────────────────
-function parseMatches(raw) {
-  if (!raw || typeof raw !== "string") return null;
-  const clean = raw.replace(/```json|```/g, "").trim();
-
-  // 1) Hele blob als JSON proberen (jsonMode-pad)
-  try {
-    const obj = JSON.parse(clean);
-    if (Array.isArray(obj)) return obj;
-    if (Array.isArray(obj.matches)) return obj.matches;
-  } catch (_) {}
-
-  // 2) JSON-object {"matches":[...]} eruit pikken
-  const objStart = clean.indexOf("{");
-  const objEnd   = clean.lastIndexOf("}");
-  if (objStart !== -1 && objEnd !== -1 && objEnd > objStart) {
-    try {
-      const obj = JSON.parse(clean.slice(objStart, objEnd + 1));
-      if (Array.isArray(obj.matches)) return obj.matches;
-    } catch (_) {}
-  }
-
-  // 3) Losse array [...] eruit pikken
-  const arrStart = clean.indexOf("[");
-  const arrEnd   = clean.lastIndexOf("]");
-  if (arrStart !== -1 && arrEnd !== -1 && arrEnd > arrStart) {
-    try {
-      const arr = JSON.parse(clean.slice(arrStart, arrEnd + 1));
-      if (Array.isArray(arr)) return arr;
-    } catch (_) {}
-  }
-
-  return null; // niet kunnen parsen
-}
-
-// ─── UI COMPONENTS ────────────────────────────────────────────────────────────
+// ─── UI COMPONENTS ───────────────────────────────────────────────────────────
 function ProgressBar({ current, total }) {
   return (
     <div style={{ marginBottom:28 }}>
@@ -253,7 +211,7 @@ function ScaleInput({ value, onChange, leftLabel, rightLabel, steps=7 }) {
         ))}
       </div>
       <div style={{ display:"flex", justifyContent:"space-between", gap:20 }}>
-        {[leftLabel, rightLabel].map((lbl,i)=>(
+        {[leftLabel,rightLabel].map((lbl,i)=>(
           <div key={i} style={{ fontSize:12, color:C.muted, lineHeight:1.5, textAlign:i===0?"left":"right", whiteSpace:"pre-line", flex:1 }}>{lbl}</div>
         ))}
       </div>
@@ -263,50 +221,32 @@ function ScaleInput({ value, onChange, leftLabel, rightLabel, steps=7 }) {
 
 // ─── MAIN ────────────────────────────────────────────────────────────────────
 export default function CareerAssistant() {
-  // Lazy init vanuit localStorage zodat refresh-tijdens-vragenlijst niet alles wegmieter.
-  const [answers, setAnswers] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LS_ANSWERS) || "{}"); }
-    catch { return {}; }
-  });
-  const [screen, setScreen] = useState(() => {
-    const saved = parseInt(localStorage.getItem(LS_SCREEN) || "0", 10);
-    if (Number.isNaN(saved)) return 0;
-    // Niet herstarten op het 'generating'-scherm — dan vuurt 't direct een API-call af bij refresh.
-    if (saved < 0 || saved >= FLOW.length) return 0;
-    if (FLOW[saved]?.type === "generating") return Math.max(0, saved - 1);
-    return saved;
-  });
-  const [loading, setLoading] = useState(false);
-  const [loadingStep, setLoadingStep] = useState(0);
-  const [result, setResult] = useState(null);
-  const [genError, setGenError] = useState(null); // {type:'profile'|'matches', message}
-  const [savedNotice, setSavedNotice] = useState(false); // korte hint dat er voortgang hersteld is
+  const [initial] = useState(getInitialState);
 
-  // Persist answers
-  useEffect(() => {
-    try { localStorage.setItem(LS_ANSWERS, JSON.stringify(answers)); } catch {}
-  }, [answers]);
+  const [screen, setScreen]           = useState(initial.screen);
+  const [answers, setAnswers]         = useState(initial.answers);
+  const [result, setResult]           = useState(initial.result);
+  const [docsByMatch, setDocsByMatch] = useState(initial.docsByMatch);
 
-  // Persist screen (skip result-scherm en generating)
-  useEffect(() => {
-    try {
-      if (screen < FLOW.length && FLOW[screen]?.type !== "generating") {
-        localStorage.setItem(LS_SCREEN, String(screen));
-      }
-    } catch {}
-  }, [screen]);
+  const [loading, setLoading]           = useState(false);
+  const [loadingStep, setLoadingStep]   = useState(0);
+  const [flowError, setFlowError]       = useState(null);
 
-  // Hint tonen als we voortgang hebben hersteld
+  const [activeMatchIdx, setActiveMatchIdx]   = useState(null);
+  const [pendingMatchIdx, setPendingMatchIdx] = useState(null);
+  const [vacTekstDraft, setVacTekstDraft]     = useState("");
+  const [genStep, setGenStep]                 = useState(null);
+  const [genError, setGenError]               = useState(null);
+  const [matchesRegenerating, setMatchesRegenerating] = useState(false);
+
+  // Auto-save bij elke state wijziging
   useEffect(() => {
-    if (Object.keys(answers).length > 0 && screen > 0 && screen < FLOW.length-1) {
-      setSavedNotice(true);
-      const t = setTimeout(()=>setSavedNotice(false), 3500);
-      return () => clearTimeout(t);
-    }
-  }, []); // eenmalig bij mount
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ screen, answers, result, docsByMatch })); }
+    catch {}
+  }, [screen, answers, result, docsByMatch]);
 
   const current = FLOW[screen];
-  const questionIndex = FLOW.slice(0, screen+1).filter(f=>!["intro","generating"].includes(f.type)).length;
+  const questionIndex = FLOW.slice(0,screen+1).filter(f=>!["intro","generating"].includes(f.type)).length;
   const totalQuestions = QUESTION_SCREENS.length;
 
   const set = (field, value) => setAnswers(a=>({...a,[field]:value}));
@@ -328,93 +268,92 @@ export default function CareerAssistant() {
   };
 
   const generate = async () => {
-    setLoading(true);
-    setGenError(null);
+    setLoading(true); setFlowError(null);
     try {
       setLoadingStep(0);
-      const profileText = await callOpenRouter(buildProfilePrompt(answers), 1000);
-
+      const profileText = await callOpenRouter(buildProfilePrompt(answers), { maxTokens:1000 });
       setLoadingStep(1);
-      const matchRaw = await callOpenRouter(buildMatchPrompt(answers), 1500, { jsonMode: true });
+      const matchRaw = await callOpenRouter(buildMatchPrompt(answers), { maxTokens:1500, jsonMode:true });
       const matches = parseMatches(matchRaw);
-
       setLoadingStep(2);
-      if (matches === null) {
-        // Profielschets is gelukt; alleen matches niet — laat 't expliciet zien met retry
-        setResult({ profile: profileText, matches: [], rawMatchOutput: matchRaw });
-        setGenError({ type: "matches", message: "We konden de functiematches niet uit het antwoord van het model halen." });
-      } else {
-        setResult({ profile: profileText, matches });
-      }
+      setResult({ profile:profileText, matches });
+      setScreen(FLOW.length);
     } catch(e) {
-      setResult({ profile: "", matches: [] });
-      setGenError({ type: "profile", message: e.message || "Onbekende fout bij genereren." });
+      setFlowError(e.message || "Er ging iets mis bij het genereren.");
     } finally {
       setLoading(false);
-      setScreen(FLOW.length);
     }
   };
 
-  // Alleen matches opnieuw ophalen (zonder profielschets opnieuw te genereren)
-  const retryMatches = async () => {
-    setLoading(true);
-    setGenError(null);
-    setLoadingStep(1);
+  const regenerateMatches = async () => {
+    setMatchesRegenerating(true); setGenError(null);
     try {
-      const matchRaw = await callOpenRouter(buildMatchPrompt(answers), 1500, { jsonMode: true });
-      const matches = parseMatches(matchRaw);
-      if (matches === null) {
-        setGenError({ type: "matches", message: "Het model gaf opnieuw geen geldige JSON terug. Probeer het later nog eens." });
-        setResult(r => ({ ...(r||{ profile:"", matches:[] }), rawMatchOutput: matchRaw }));
-      } else {
-        setResult(r => ({ ...(r||{ profile:"" }), matches }));
-      }
-    } catch (e) {
-      setGenError({ type: "matches", message: e.message || "Onbekende fout." });
-    } finally {
-      setLoading(false);
-    }
+      const matchRaw = await callOpenRouter(buildMatchPrompt(answers), { maxTokens:1500, jsonMode:true });
+      setResult(r=>({ ...r, matches:parseMatches(matchRaw) }));
+    } catch(e) { setGenError(e.message || "Matches opnieuw genereren mislukt."); }
+    finally { setMatchesRegenerating(false); }
+  };
+
+  const confirmGenerate = async (idx) => {
+    const match = result?.matches?.[idx];
+    if (!match) return;
+    setPendingMatchIdx(null); setActiveMatchIdx(idx); setGenError(null); setGenStep("cv");
+    try {
+      const cvText = await callOpenRouter(buildCVPrompt(answers, match.functie));
+      setGenStep("brief");
+      const briefText = await callOpenRouter(buildBriefPrompt(answers, match, vacTekstDraft));
+      setDocsByMatch(prev=>({ ...prev, [idx]:{ cv:cvText, brief:briefText, functie:match.functie, sector:match.sector } }));
+      setVacTekstDraft("");
+    } catch(e) { setGenError(e.message || "Genereren mislukt."); }
+    finally { setGenStep(null); }
   };
 
   const next = async () => {
     if (screen < FLOW.length-1) {
-      const nextScreen = screen+1;
-      setScreen(nextScreen);
-      if (FLOW[nextScreen]?.type==="generating") await generate();
+      const ns = screen+1; setScreen(ns);
+      if (FLOW[ns]?.type==="generating") await generate();
     }
   };
   const prev = () => { if (screen>0) setScreen(s=>s-1); };
+
   const restart = () => {
-    setScreen(0); setAnswers({}); setResult(null); setGenError(null);
-    try {
-      localStorage.removeItem(LS_ANSWERS);
-      localStorage.removeItem(LS_SCREEN);
-    } catch {}
-  };
-  const clearProgress = () => {
-    try {
-      localStorage.removeItem(LS_ANSWERS);
-      localStorage.removeItem(LS_SCREEN);
-    } catch {}
-    setAnswers({});
-    setScreen(0);
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    setScreen(0); setAnswers({}); setResult(null); setDocsByMatch({});
+    setActiveMatchIdx(null); setPendingMatchIdx(null); setVacTekstDraft("");
+    setFlowError(null); setGenError(null);
   };
 
-  // Result
-  if (screen>=FLOW.length && result) {
+  // ── RESULT ──
+  if (screen >= FLOW.length && result) {
     return (
       <ResultView
-        answers={answers}
-        result={result}
-        genError={genError}
-        onRetryMatches={retryMatches}
-        onRestart={restart}
+        answers={answers} result={result} onRestart={restart}
+        docsByMatch={docsByMatch} activeMatchIdx={activeMatchIdx} setActiveMatchIdx={setActiveMatchIdx}
+        pendingMatchIdx={pendingMatchIdx} setPendingMatchIdx={setPendingMatchIdx}
+        vacTekstDraft={vacTekstDraft} setVacTekstDraft={setVacTekstDraft}
+        genStep={genStep} genError={genError} matchesRegenerating={matchesRegenerating}
+        onConfirmGenerate={confirmGenerate} onRegenerateMatches={regenerateMatches}
       />
     );
   }
 
-  // Loading
+  // ── LOADING / FOUT ──
   if (loading || current?.type==="generating") {
+    if (flowError && !loading) {
+      return (
+        <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Inter,sans-serif", padding:24 }}>
+          <div style={{ maxWidth:420, textAlign:"center" }}>
+            <div style={{ fontSize:40, marginBottom:16 }}>⚠️</div>
+            <h2 style={{ fontSize:18, fontWeight:700, margin:"0 0 8px", color:C.text }}>Er ging iets mis</h2>
+            <p style={{ fontSize:14, color:C.muted, margin:"0 0 24px", lineHeight:1.6 }}>{flowError}</p>
+            <div style={{ display:"flex", gap:10, justifyContent:"center" }}>
+              <button onClick={()=>setScreen(s=>s-1)} style={ghostBtn}>← Terug</button>
+              <button onClick={generate} style={primaryBtn(true)}>↻ Probeer opnieuw</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
     const msgs = ["Profielschets schrijven...","Matches berekenen...","Alles samenvoegen..."];
     return (
       <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Inter,sans-serif" }}>
@@ -428,9 +367,8 @@ export default function CareerAssistant() {
     );
   }
 
-  // Intro
+  // ── INTRO ──
   if (current?.type==="intro") {
-    const hasProgress = Object.keys(answers).length > 0;
     return (
       <div style={{ minHeight:"100vh", background:C.bg, display:"flex", alignItems:"center", justifyContent:"center", fontFamily:"Inter,sans-serif", padding:24 }}>
         <div style={{ maxWidth:540, textAlign:"center" }}>
@@ -439,26 +377,15 @@ export default function CareerAssistant() {
           <p style={{ fontSize:16, color:C.muted, lineHeight:1.8, margin:"0 0 36px", whiteSpace:"pre-line" }}>{current.sub}</p>
           <button onClick={next} style={{ padding:"16px 40px", borderRadius:14, border:"none", background:"linear-gradient(135deg,#1f6feb,#58a6ff)", color:"#fff", fontSize:16, fontWeight:700, cursor:"pointer", boxShadow:"0 8px 32px rgba(88,166,255,0.25)" }}>{current.cta}</button>
           <div style={{ fontSize:12, color:C.subtle, marginTop:16 }}>~5 minuten · geen account nodig · jouw data blijft bij jou</div>
-          {hasProgress && (
-            <div style={{ marginTop:20 }}>
-              <button onClick={clearProgress} style={{ ...ghostBtn, fontSize:12 }}>🗑️ Eerdere voortgang wissen</button>
-            </div>
-          )}
         </div>
       </div>
     );
   }
 
-  // Question
+  // ── VRAGEN ──
   return (
     <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',-apple-system,sans-serif", padding:"28px 16px" }}>
       <div style={{ maxWidth:600, margin:"0 auto" }}>
-        {savedNotice && (
-          <div style={{ background:C.greenDim, border:`1px solid rgba(63,185,80,0.3)`, color:C.green, padding:"10px 14px", borderRadius:10, fontSize:13, marginBottom:16, display:"flex", justifyContent:"space-between", alignItems:"center", gap:12 }}>
-            <span>↩️ Voortgang hersteld — je gaat verder waar je was.</span>
-            <button onClick={clearProgress} style={{ background:"transparent", border:"none", color:C.green, fontSize:12, cursor:"pointer", textDecoration:"underline", fontFamily:"inherit" }}>Wis & opnieuw</button>
-          </div>
-        )}
         <ProgressBar current={questionIndex} total={totalQuestions} />
         {current?.block && <BlockLabel label={current.block} />}
         <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:20, padding:"30px 26px", marginBottom:20 }}>
@@ -467,13 +394,8 @@ export default function CareerAssistant() {
             {typeof current?.vraag==="function" ? current.vraag(answers) : current?.vraag}
           </div>
           {current?.sub && <div style={{ fontSize:13, color:C.muted, marginBottom:22, lineHeight:1.6 }}>{current.sub}</div>}
-
-          {current?.type==="text" && (
-            <input style={inp} value={answers[current.field]||""} onChange={e=>set(current.field,e.target.value)} placeholder={current.placeholder||""} onKeyDown={e=>e.key==="Enter"&&canNext()&&next()} autoFocus />
-          )}
-          {current?.type==="textarea" && (
-            <textarea style={{...inp,resize:"vertical"}} rows={4} value={answers[current.field]||""} onChange={e=>set(current.field,e.target.value)} placeholder={current.placeholder||""} autoFocus />
-          )}
+          {current?.type==="text" && <input style={inp} value={answers[current.field]||""} onChange={e=>set(current.field,e.target.value)} placeholder={current.placeholder||""} onKeyDown={e=>e.key==="Enter"&&canNext()&&next()} autoFocus />}
+          {current?.type==="textarea" && <textarea style={{...inp,resize:"vertical"}} rows={4} value={answers[current.field]||""} onChange={e=>set(current.field,e.target.value)} placeholder={current.placeholder||""} autoFocus />}
           {current?.type==="single" && (
             <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
               {current.options.map(o=><OptionBtn key={o} label={o} active={answers[current.field]===o} onClick={()=>set(current.field,o)} />)}
@@ -490,19 +412,13 @@ export default function CareerAssistant() {
               {current.max && <div style={{ fontSize:12, color:C.muted, marginTop:10 }}>{(answers[current.field]||[]).length} / {current.max} geselecteerd</div>}
             </div>
           )}
-          {current?.type==="scale" && (
-            <ScaleInput value={answers[current.field]} onChange={v=>set(current.field,v)} leftLabel={current.leftLabel} rightLabel={current.rightLabel} steps={current.steps} />
-          )}
+          {current?.type==="scale" && <ScaleInput value={answers[current.field]} onChange={v=>set(current.field,v)} leftLabel={current.leftLabel} rightLabel={current.rightLabel} steps={current.steps} />}
         </div>
-
         <div style={{ display:"flex", gap:10, justifyContent:"space-between" }}>
           {screen>1 ? <button onClick={prev} style={ghostBtn}>← Terug</button> : <div />}
           <button onClick={next} disabled={!canNext()} style={primaryBtn(canNext())}>
             {screen===FLOW.length-2 ? "✦ Maak mijn profiel" : "Volgende →"}
           </button>
-        </div>
-        <div style={{ textAlign:"center", marginTop:14 }}>
-          <span style={{ fontSize:11, color:C.subtle }}>💾 Je antwoorden worden automatisch lokaal bewaard</span>
         </div>
       </div>
       <style>{`*{box-sizing:border-box} input::placeholder,textarea::placeholder{color:#4d5661}`}</style>
@@ -510,121 +426,80 @@ export default function CareerAssistant() {
   );
 }
 
-// ─── PRINT / PDF DOCUMENT ──────────────────────────────────────────────────────
-function PrintDocument({ answers, result, selectedMatch, cv, brief }) {
-  const sections = (result.profile || "").split(/\n(?=## )/).map(s => s.trim()).filter(Boolean);
-  const today = new Date().toLocaleDateString("nl-NL", { day: "numeric", month: "long", year: "numeric" });
-
+// ─── PRINT DOCUMENT ──────────────────────────────────────────────────────────
+function PrintDocument({ answers, result, docsByMatch }) {
+  const sections = (result.profile||"").split(/\n(?=## )/).map(s=>s.trim()).filter(Boolean);
+  const today = new Date().toLocaleDateString("nl-NL",{day:"numeric",month:"long",year:"numeric"});
+  const docs = Object.values(docsByMatch||{});
   return (
-    <div className="print-only" style={{ background: "#fff", color: "#111", padding: 32, fontFamily: "'Inter',-apple-system,sans-serif" }}>
-      <div style={{ marginBottom: 28, borderBottom: "2px solid #111", paddingBottom: 12 }}>
-        <h1 style={{ margin: "0 0 4px", fontSize: 24 }}>{answers.naam ? `Profiel van ${answers.naam}` : "Carrièreprofiel"}</h1>
-        <span style={{ fontSize: 12, color: "#555" }}>Gegenereerd op {today}</span>
+    <div className="print-only" style={{ background:"#fff", color:"#111", padding:32, fontFamily:"'Inter',-apple-system,sans-serif" }}>
+      <div style={{ marginBottom:28, borderBottom:"2px solid #111", paddingBottom:12 }}>
+        <h1 style={{ margin:"0 0 4px", fontSize:24 }}>{answers.naam?`Profiel van ${answers.naam}`:"Carrièreprofiel"}</h1>
+        <span style={{ fontSize:12, color:"#555" }}>Gegenereerd op {today}</span>
       </div>
-
-      <h2 style={{ fontSize: 18, margin: "0 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Profielschets</h2>
-      {sections.map((sec, idx) => {
+      <h2 style={{ fontSize:18, margin:"0 0 12px", borderBottom:"1px solid #ccc", paddingBottom:6 }}>Profielschets</h2>
+      {sections.map((sec,idx)=>{
         const lines = sec.split("\n");
-        const title = lines[0].replace("## ", "").trim();
+        const title = lines[0].replace("## ","").trim();
         const content = lines.slice(1).join("\n").trim();
         return (
-          <div key={idx} style={{ marginBottom: 18, pageBreakInside: "avoid" }}>
-            <h3 style={{ margin: "0 0 6px", fontSize: 14, fontWeight: 700 }}>{title}</h3>
-            <p style={{ margin: 0, fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line" }}>{content}</p>
+          <div key={idx} style={{ marginBottom:18, pageBreakInside:"avoid" }}>
+            <h3 style={{ margin:"0 0 6px", fontSize:14, fontWeight:700 }}>{title}</h3>
+            <p style={{ margin:0, fontSize:13, lineHeight:1.6, whiteSpace:"pre-line" }}>{content}</p>
           </div>
         );
       })}
-
-      {result.matches?.length > 0 && (
-        <>
-          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Functiematches</h2>
-          {result.matches.map((m, idx) => (
-            <div key={idx} style={{ marginBottom: 16, pageBreakInside: "avoid" }}>
-              <h3 style={{ margin: "0 0 4px", fontSize: 14, fontWeight: 700 }}>{m.functie} — {m.fit}% fit</h3>
-              <div style={{ fontSize: 12, color: "#555", marginBottom: 4 }}>{m.sector}</div>
-              <p style={{ margin: "0 0 4px", fontSize: 13, lineHeight: 1.5 }}>{m.waarom}</p>
-              <div style={{ fontSize: 12 }}><b>Energie:</b> {m.energie}</div>
-              <div style={{ fontSize: 12 }}><b>Aandachtspunt:</b> {m.risico}</div>
-            </div>
-          ))}
-        </>
-      )}
-
-      {selectedMatch && cv && (
-        <>
-          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>CV-profiel ({selectedMatch.functie})</h2>
-          <p style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line", pageBreakInside: "avoid" }}>{cv}</p>
-        </>
-      )}
-
-      {selectedMatch && brief && (
-        <>
-          <h2 style={{ fontSize: 18, margin: "28px 0 12px", borderBottom: "1px solid #ccc", paddingBottom: 6 }}>Sollicitatiebrief ({selectedMatch.functie})</h2>
-          <p style={{ fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-line", pageBreakInside: "avoid" }}>{brief}</p>
-        </>
-      )}
+      {result.matches?.length>0 && <>
+        <h2 style={{ fontSize:18, margin:"28px 0 12px", borderBottom:"1px solid #ccc", paddingBottom:6 }}>Functiematches</h2>
+        {result.matches.map((m,idx)=>(
+          <div key={idx} style={{ marginBottom:16, pageBreakInside:"avoid" }}>
+            <h3 style={{ margin:"0 0 4px", fontSize:14, fontWeight:700 }}>{m.functie} — {m.fit}% fit</h3>
+            <div style={{ fontSize:12, color:"#555", marginBottom:4 }}>{m.sector}</div>
+            <p style={{ margin:"0 0 4px", fontSize:13, lineHeight:1.5 }}>{m.waarom}</p>
+            <div style={{ fontSize:12 }}><b>Energie:</b> {m.energie}</div>
+            <div style={{ fontSize:12 }}><b>Aandachtspunt:</b> {m.risico}</div>
+          </div>
+        ))}
+      </>}
+      {docs.map((d,idx)=>(
+        <div key={idx}>
+          <h2 style={{ fontSize:18, margin:"28px 0 12px", borderBottom:"1px solid #ccc", paddingBottom:6 }}>CV-profiel ({d.functie})</h2>
+          <p style={{ fontSize:13, lineHeight:1.6, whiteSpace:"pre-line", pageBreakInside:"avoid" }}>{d.cv}</p>
+          <h2 style={{ fontSize:18, margin:"28px 0 12px", borderBottom:"1px solid #ccc", paddingBottom:6 }}>Sollicitatiebrief ({d.functie})</h2>
+          <p style={{ fontSize:13, lineHeight:1.6, whiteSpace:"pre-line", pageBreakInside:"avoid" }}>{d.brief}</p>
+        </div>
+      ))}
     </div>
   );
 }
 
-// ─── RESULT VIEW ──────────────────────────────────────────────────────────────
-function ResultView({ answers, result, genError, onRetryMatches, onRestart }) {
+// ─── RESULT VIEW ─────────────────────────────────────────────────────────────
+function ResultView({ answers, result, onRestart, docsByMatch, activeMatchIdx, setActiveMatchIdx, pendingMatchIdx, setPendingMatchIdx, vacTekstDraft, setVacTekstDraft, genStep, genError, matchesRegenerating, onConfirmGenerate, onRegenerateMatches }) {
   const [tab, setTab] = useState("profiel");
-  const [selectedMatchIdx, setSelectedMatchIdx] = useState(null);
-  // Per match: { vacTekst, cv, brief, generating: false|'cv'|'brief', error }
-  const [docsByMatch, setDocsByMatch] = useState({});
-  const [showVacInput, setShowVacInput] = useState(null); // idx van match waarvan input open staat
   const [copied, setCopied] = useState(null);
 
-  const matchKey = (idx) => `m${idx}`;
-  const selectedMatch = selectedMatchIdx !== null ? result.matches?.[selectedMatchIdx] : null;
-  const selectedDocs  = selectedMatchIdx !== null ? docsByMatch[matchKey(selectedMatchIdx)] : null;
-
-  const copy = (text, key) => { navigator.clipboard.writeText(text); setCopied(key); setTimeout(()=>setCopied(null),2000); };
-
-  const updateDoc = (idx, patch) => {
-    setDocsByMatch(prev => ({
-      ...prev,
-      [matchKey(idx)]: { ...(prev[matchKey(idx)]||{}), ...patch },
-    }));
-  };
-
-  const handleGenerate = async (idx, vacatureTekst) => {
-    const match = result.matches[idx];
-    if (!match) return;
-    setSelectedMatchIdx(idx);
-    setShowVacInput(null);
-    setTab("docs");
-    updateDoc(idx, { cv: "", brief: "", generating: "cv", error: null, vacTekst: vacatureTekst || "" });
-    try {
-      const cvText = await callOpenRouter(buildCVPrompt(answers, match.functie));
-      updateDoc(idx, { cv: cvText, generating: "brief" });
-      const briefText = await callOpenRouter(buildBriefPrompt(answers, match, vacatureTekst || ""));
-      updateDoc(idx, { brief: briefText, generating: null });
-    } catch (e) {
-      updateDoc(idx, { generating: null, error: e.message || "Genereren mislukt." });
-    }
-  };
+  const copy = (text,key)=>{ navigator.clipboard.writeText(text); setCopied(key); setTimeout(()=>setCopied(null),2000); };
 
   const sections = (result.profile||"").split(/\n(?=## )/).map(s=>s.trim()).filter(Boolean);
-  const generatedMatchIdxs = Object.keys(docsByMatch).map(k => parseInt(k.replace("m",""), 10));
+  const hasMatches = (result.matches||[]).length>0;
+  const generatedEntries = Object.entries(docsByMatch);
+  const activeDoc = activeMatchIdx!=null ? docsByMatch[activeMatchIdx] : null;
 
   const TABS = [
     { id:"profiel", label:"📋 Profielschets" },
-    { id:"matches", label:`🎯 Matches ${result.matches?.length ? `(${result.matches.length})` : ""}` },
-    { id:"docs",    label:`✦ CV & Brief ${generatedMatchIdxs.length ? `(${generatedMatchIdxs.length})` : ""}` },
+    { id:"matches", label:`🎯 Matches${result.matches?.length?` (${result.matches.length})`:""}` },
+    { id:"docs",    label:`✦ CV & Brief${generatedEntries.length?` (${generatedEntries.length})`:""}` },
   ];
 
   return (
     <div style={{ minHeight:"100vh", background:C.bg, color:C.text, fontFamily:"'Inter',-apple-system,sans-serif" }}>
       <style>{`
         @media print {
-          body { background: #fff !important; }
-          .no-print { display: none !important; }
-          .print-only { display: block !important; }
+          body { background:#fff !important; }
+          .no-print { display:none !important; }
+          .print-only { display:block !important; }
         }
-        .print-only { display: none; }
-        @keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
+        .print-only { display:none; }
       `}</style>
 
       {/* Sticky nav */}
@@ -648,155 +523,84 @@ function ResultView({ answers, result, genError, onRetryMatches, onRestart }) {
       </div>
 
       <div className="no-print" style={{ maxWidth:700, margin:"0 auto", padding:"28px 16px 60px" }}>
-        {/* Globale foutmelding (profile-fase) */}
-        {genError?.type === "profile" && (
-          <div style={{ background:C.redDim, border:`1px solid rgba(248,81,73,0.3)`, color:C.red, padding:"14px 16px", borderRadius:12, marginBottom:20, fontSize:14 }}>
-            <div style={{ fontWeight:700, marginBottom:4 }}>⚠️ Er ging iets mis bij het genereren</div>
-            <div style={{ color:C.text, marginBottom:10 }}>{genError.message}</div>
-            <button onClick={onRestart} style={{ ...ghostBtn, fontSize:12, color:C.red, borderColor:"rgba(248,81,73,0.3)" }}>↺ Probeer opnieuw</button>
-          </div>
-        )}
 
-        {tab === "profiel" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {sections.length === 0 && !genError && (
-              <div style={{ color:C.muted, fontSize:14, textAlign:"center", padding:40 }}>Geen profielschets beschikbaar.</div>
-            )}
-            {sections.map((sec, idx) => {
-              const lines = sec.split("\n");
-              const title = lines[0].replace("## ", "").trim();
-              const content = lines.slice(1).join("\n").trim();
-              const theme = SECTION_COLORS[title] || { color: C.text, bg: C.surface };
-
+        {/* ── PROFIELSCHETS ── */}
+        {tab==="profiel" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            {sections.map((sec,idx)=>{
+              const lines=sec.split("\n");
+              const title=lines[0].replace("## ","").trim();
+              const content=lines.slice(1).join("\n").trim();
+              const theme=SECTION_COLORS[title]||{ color:C.text, bg:C.surface };
               return (
-                <div key={idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
-                  <h3 style={{ margin: "0 0 12px", fontSize: 16, fontWeight: 700, color: theme.color, display: "inline-block", padding: "4px 12px", borderRadius: 8, background: theme.bg }}>
-                    {title}
-                  </h3>
-                  <p style={{ margin: 0, fontSize: 14, color: C.text, lineHeight: 1.7, whiteSpace: "pre-line" }}>{content}</p>
+                <div key={idx} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24 }}>
+                  <h3 style={{ margin:"0 0 12px", fontSize:16, fontWeight:700, color:theme.color, display:"inline-block", padding:"4px 12px", borderRadius:8, background:theme.bg }}>{title}</h3>
+                  <p style={{ margin:0, fontSize:14, color:C.text, lineHeight:1.7, whiteSpace:"pre-line" }}>{content}</p>
                 </div>
               );
             })}
           </div>
         )}
 
-        {tab === "matches" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* Matches-foutmelding met retry */}
-            {genError?.type === "matches" && (
-              <div style={{ background:C.yellowDim, border:`1px solid rgba(227,179,65,0.3)`, color:C.yellow, padding:"14px 16px", borderRadius:12, fontSize:14 }}>
-                <div style={{ fontWeight:700, marginBottom:4 }}>⚠️ Matches niet geladen</div>
-                <div style={{ color:C.text, marginBottom:10 }}>
-                  {genError.message} Dit is meestal een tijdelijk probleem met het AI-model dat geen geldige JSON teruggaf.
-                </div>
-                <button onClick={onRetryMatches} style={{ ...primaryBtn(true), padding:"8px 16px", fontSize:13 }}>
-                  🔄 Opnieuw proberen
+        {/* ── MATCHES ── */}
+        {tab==="matches" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+            {!hasMatches && (
+              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24, textAlign:"center" }}>
+                <p style={{ fontSize:14, color:C.muted, margin:"0 0 14px" }}>We konden geen functiematches genereren. Dit gebeurt soms als het AI-model een onverwacht antwoord teruggeeft.</p>
+                <button onClick={onRegenerateMatches} disabled={matchesRegenerating} style={primaryBtn(!matchesRegenerating)}>
+                  {matchesRegenerating?"Opnieuw genereren...":"↻ Matches opnieuw genereren"}
                 </button>
               </div>
             )}
-
-            {result.matches?.length === 0 && !genError && (
-              <div style={{ color:C.muted, fontSize:14, textAlign:"center", padding:40 }}>Geen matches gevonden.</div>
-            )}
-
-            {result.matches?.map((m, idx) => {
-              const doc = docsByMatch[matchKey(idx)];
-              const hasDocs = !!(doc?.cv || doc?.brief);
-              const isGenerating = doc?.generating;
-              const vacOpen = showVacInput === idx;
-
+            {result.matches?.map((m,idx)=>{
+              const docs=docsByMatch[idx];
+              const isPending=pendingMatchIdx===idx;
+              const isGeneratingThis=genStep&&activeMatchIdx===idx;
               return (
-                <div key={idx} style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
+                <div key={idx} style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24 }}>
+                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", marginBottom:12 }}>
                     <div>
-                      <h3 style={{ margin: "0 0 4px", fontSize: 18, fontWeight: 800 }}>{m.functie}</h3>
-                      <span style={{ fontSize: 12, color: C.muted }}>{m.sector}</span>
+                      <h3 style={{ margin:"0 0 4px", fontSize:18, fontWeight:800 }}>{m.functie}</h3>
+                      <span style={{ fontSize:12, color:C.muted }}>{m.sector}</span>
                     </div>
-                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                      {hasDocs && (
-                        <span style={{ background:C.purpleDim, color:C.purple, padding:"3px 8px", borderRadius:6, fontSize:11, fontWeight:700 }}>
-                          ✦ Documenten klaar
-                        </span>
-                      )}
-                      <div style={{ background: C.greenDim, color: C.green, padding: "4px 8px", borderRadius: 8, fontSize: 12, fontWeight: 700 }}>
-                        {m.fit}% Fit
-                      </div>
-                    </div>
+                    <div style={{ background:C.greenDim, color:C.green, padding:"4px 8px", borderRadius:8, fontSize:12, fontWeight:700 }}>{m.fit}% Fit</div>
                   </div>
-                  <p style={{ fontSize: 14, lineHeight: 1.6, margin: "0 0 16px", color: C.text }}>{m.waarom}</p>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 20, fontSize: 12 }}>
-                    <div>
-                      <span style={{ color: C.muted, display: "block", marginBottom: 2 }}>Energie-balans:</span>
-                      <span style={{ color: C.orange }}>{m.energie}</span>
-                    </div>
-                    <div>
-                      <span style={{ color: C.muted, display: "block", marginBottom: 2 }}>Aandachtspunt:</span>
-                      <span style={{ color: C.red }}>{m.risico}</span>
-                    </div>
+                  <p style={{ fontSize:14, lineHeight:1.6, margin:"0 0 16px", color:C.text }}>{m.waarom}</p>
+                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20, fontSize:12 }}>
+                    <div><span style={{ color:C.muted, display:"block", marginBottom:2 }}>Energie-balans:</span><span style={{ color:C.orange }}>{m.energie}</span></div>
+                    <div><span style={{ color:C.muted, display:"block", marginBottom:2 }}>Aandachtspunt:</span><span style={{ color:C.red }}>{m.risico}</span></div>
                   </div>
 
-                  {/* Vacaturetekst-veld (nu écht zichtbaar) */}
-                  {vacOpen && (
-                    <div style={{ marginBottom:16, padding:14, background:C.card, border:`1px solid ${C.border}`, borderRadius:12 }}>
-                      <label style={{ fontSize:12, fontWeight:600, color:C.accent, display:"block", marginBottom:6 }}>
-                        📋 Plak hier de vacaturetekst (optioneel)
-                      </label>
-                      <div style={{ fontSize:11, color:C.muted, marginBottom:8 }}>
-                        Hoe specifieker de vacature, hoe specifieker de brief. Leeg laten kan ook — dan wordt 'ie generiek voor de rol.
-                      </div>
-                      <textarea
-                        value={doc?.vacTekst ?? ""}
-                        onChange={e => updateDoc(idx, { vacTekst: e.target.value })}
-                        rows={6}
-                        placeholder="bijv. Wij zoeken een commercieel sterke accountmanager met passie voor SaaS. Je werkt met..."
-                        style={{ ...inp, fontSize:13, resize:"vertical" }}
-                      />
+                  {/* Vacature-input panel */}
+                  {isPending ? (
+                    <div style={{ padding:16, background:C.card, borderRadius:12, border:`1px solid ${C.border}` }}>
+                      <div style={{ fontSize:12, color:C.muted, marginBottom:8 }}>Plak hier de vacaturetekst voor een gerichtere brief (optioneel):</div>
+                      <textarea style={{...inp,resize:"vertical"}} rows={4} value={vacTekstDraft} onChange={e=>setVacTekstDraft(e.target.value)} placeholder="Plak de vacaturetekst hier, of laat leeg..." autoFocus />
                       <div style={{ display:"flex", gap:8, marginTop:10 }}>
-                        <button
-                          onClick={() => handleGenerate(idx, doc?.vacTekst || "")}
-                          style={{ ...primaryBtn(true), padding:"9px 16px", fontSize:13, flex:1 }}
-                        >
-                          ✨ Genereer met deze vacature
-                        </button>
-                        <button onClick={() => setShowVacInput(null)} style={{ ...ghostBtn, padding:"9px 14px", fontSize:13 }}>
-                          Annuleer
-                        </button>
+                        <button onClick={()=>onConfirmGenerate(idx)} style={{ ...primaryBtn(true), flex:1, padding:"10px 16px", fontSize:13 }}>✨ Genereer CV & Brief</button>
+                        <button onClick={()=>{ setPendingMatchIdx(null); setVacTekstDraft(""); }} style={{ ...ghostBtn, padding:"10px 16px", fontSize:13 }}>Annuleren</button>
                       </div>
                     </div>
-                  )}
-
-                  {!vacOpen && (
-                    <div style={{ display: "flex", gap: 8, flexWrap:"wrap" }}>
-                      <button
-                        onClick={() => handleGenerate(idx, "")}
-                        disabled={!!isGenerating}
-                        style={{ ...primaryBtn(!isGenerating), padding: "10px 18px", fontSize: 13, flex:"1 1 auto" }}
-                      >
-                        {isGenerating ? "⟳ Bezig..." : hasDocs ? "↻ Opnieuw genereren" : "✨ Genereer CV & Brief"}
-                      </button>
-                      <button
-                        onClick={() => setShowVacInput(idx)}
-                        disabled={!!isGenerating}
-                        style={{ ...ghostBtn, padding: "10px 14px", fontSize: 13 }}
-                      >
-                        📋 Met vacaturetekst
-                      </button>
-                      {hasDocs && (
-                        <button
-                          onClick={() => { setSelectedMatchIdx(idx); setTab("docs"); }}
-                          style={{ ...ghostBtn, padding: "10px 14px", fontSize: 13, color:C.purple, borderColor:"rgba(188,140,255,0.3)" }}
-                        >
-                          👁️ Bekijk
-                        </button>
-                      )}
-                      <a href={m.zoekUrl} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding: "10px 14px", fontSize: 13, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
-                        Jobs ↗
-                      </a>
+                  ) : docs ? (
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>{ setActiveMatchIdx(idx); setTab("docs"); }} style={{ ...primaryBtn(true), padding:"10px 20px", fontSize:13, flex:1 }}>✓ Bekijk CV & Brief</button>
+                      <button onClick={()=>setPendingMatchIdx(idx)} style={{ ...ghostBtn, padding:"10px 14px", fontSize:13 }} title="Opnieuw genereren">↻</button>
+                      <a href={m.zoekUrl} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding:"10px 16px", fontSize:13, textDecoration:"none", display:"inline-flex", alignItems:"center" }}>Zoek Jobs ↗</a>
+                    </div>
+                  ) : (
+                    <div style={{ display:"flex", gap:8 }}>
+                      <button onClick={()=>setPendingMatchIdx(idx)} style={{ ...primaryBtn(true), padding:"10px 20px", fontSize:13, flex:1 }}>✨ Genereer CV & Brief</button>
+                      <a href={m.zoekUrl} target="_blank" rel="noreferrer" style={{ ...ghostBtn, padding:"10px 16px", fontSize:13, textDecoration:"none", display:"inline-flex", alignItems:"center" }}>Zoek Jobs ↗</a>
                     </div>
                   )}
 
-                  {doc?.error && (
-                    <div style={{ marginTop:10, color:C.red, fontSize:12 }}>⚠️ {doc.error}</div>
+                  {isGeneratingThis && <div style={{ marginTop:10, fontSize:12, color:C.accent }}>⟳ {genStep==="cv"?"CV-profiel opbouwen...":"Brief schrijven..."}</div>}
+                  {genError && activeMatchIdx===idx && !genStep && (
+                    <div style={{ marginTop:10, fontSize:12, color:C.red }}>
+                      ⚠️ {genError}{" "}
+                      <span style={{ textDecoration:"underline", cursor:"pointer" }} onClick={()=>onConfirmGenerate(idx)}>opnieuw proberen</span>
+                    </div>
                   )}
                 </div>
               );
@@ -804,95 +608,45 @@ function ResultView({ answers, result, genError, onRetryMatches, onRestart }) {
           </div>
         )}
 
-        {tab === "docs" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-            {/* Match-switcher als er meerdere zijn */}
-            {generatedMatchIdxs.length > 1 && (
-              <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:12, padding:"12px 14px" }}>
-                <div style={{ fontSize:11, color:C.muted, fontWeight:600, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:8 }}>
-                  Wissel tussen sollicitaties
-                </div>
-                <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
-                  {generatedMatchIdxs.map(idx => {
-                    const m = result.matches[idx];
-                    const active = idx === selectedMatchIdx;
-                    return (
-                      <button
-                        key={idx}
-                        onClick={() => setSelectedMatchIdx(idx)}
-                        style={{
-                          padding:"7px 12px",
-                          borderRadius:8,
-                          border:`1px solid ${active ? C.accentBorder : C.border}`,
-                          background: active ? C.accentDim : "transparent",
-                          color: active ? C.accent : C.text,
-                          fontSize:12,
-                          fontWeight: active ? 700 : 500,
-                          cursor:"pointer",
-                          fontFamily:"inherit",
-                        }}
-                      >
-                        {m?.functie || `Match ${idx+1}`}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {selectedDocs?.generating ? (
-              <div style={{ textAlign: "center", padding: 40 }}>
-                <div style={{ fontSize: 32, marginBottom: 12, display: "inline-block", animation: "spin 2s linear infinite" }}>⟳</div>
-                <h3 style={{ margin: "0 0 4px", fontSize: 16 }}>Genereer documenten...</h3>
-                <span style={{ fontSize: 12, color: C.accent }}>
-                  {selectedDocs.generating === "cv" ? "CV profiel opbouwen..." : "Brief schrijven..."}
-                </span>
-              </div>
-            ) : selectedMatch && (selectedDocs?.cv || selectedDocs?.brief) ? (
-              <>
-                {selectedDocs.vacTekst && (
-                  <div style={{ background:C.purpleDim, border:`1px solid rgba(188,140,255,0.25)`, color:C.purple, padding:"8px 12px", borderRadius:10, fontSize:12 }}>
-                    ✦ Brief is afgestemd op een aangeleverde vacaturetekst
-                  </div>
-                )}
-
-                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.accent }}>Personal CV-Profile ({selectedMatch.functie})</h3>
-                    <button onClick={() => copy(selectedDocs.cv, "cv")} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>
-                      {copied === "cv" ? "Gekopieerd ✓" : "Kopieer"}
-                    </button>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-line" }}>{selectedDocs.cv}</p>
-                </div>
-
-                <div style={{ background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16, padding: 24 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-                    <h3 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: C.accent }}>Sollicitatiebrief</h3>
-                    <button onClick={() => copy(selectedDocs.brief, "brief")} style={{ background: "transparent", border: "none", color: C.muted, cursor: "pointer", fontSize: 12 }}>
-                      {copied === "brief" ? "Gekopieerd ✓" : "Kopieer"}
-                    </button>
-                  </div>
-                  <p style={{ margin: 0, fontSize: 14, lineHeight: 1.7, color: C.text, whiteSpace: "pre-line" }}>{selectedDocs.brief}</p>
-                </div>
-              </>
-            ) : (
-              <div style={{ textAlign: "center", padding: 40, color: C.muted, fontSize: 14 }}>
+        {/* ── CV & BRIEF ── */}
+        {tab==="docs" && (
+          <div style={{ display:"flex", flexDirection:"column", gap:20 }}>
+            {generatedEntries.length===0 ? (
+              <div style={{ textAlign:"center", padding:40, color:C.muted, fontSize:14 }}>
                 Ga naar de <b>🎯 Matches</b> tab en klik op "Genereer CV & Brief" bij een functie om documenten te maken.
               </div>
+            ) : (
+              <>
+                {generatedEntries.length>1 && (
+                  <div style={{ display:"flex", flexWrap:"wrap", gap:8 }}>
+                    {generatedEntries.map(([idx,d])=>(
+                      <MultiBtn key={idx} label={d.functie} active={Number(idx)===activeMatchIdx} onClick={()=>setActiveMatchIdx(Number(idx))} />
+                    ))}
+                  </div>
+                )}
+                {activeDoc && <>
+                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
+                      <h3 style={{ margin:0, fontSize:15, fontWeight:700, color:C.accent }}>Personal CV-Profile ({activeDoc.functie})</h3>
+                      <button onClick={()=>copy(activeDoc.cv,"cv")} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12 }}>{copied==="cv"?"Kopieer ✓":"Kopieer document"}</button>
+                    </div>
+                    <p style={{ margin:0, fontSize:14, lineHeight:1.7, color:C.text, whiteSpace:"pre-line" }}>{activeDoc.cv}</p>
+                  </div>
+                  <div style={{ background:C.surface, border:`1px solid ${C.border}`, borderRadius:16, padding:24 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", marginBottom:12 }}>
+                      <h3 style={{ margin:0, fontSize:15, fontWeight:700, color:C.accent }}>Sollicitatiebrief</h3>
+                      <button onClick={()=>copy(activeDoc.brief,"brief")} style={{ background:"transparent", border:"none", color:C.muted, cursor:"pointer", fontSize:12 }}>{copied==="brief"?"Kopieer ✓":"Kopieer document"}</button>
+                    </div>
+                    <p style={{ margin:0, fontSize:14, lineHeight:1.7, color:C.text, whiteSpace:"pre-line" }}>{activeDoc.brief}</p>
+                  </div>
+                </>}
+              </>
             )}
           </div>
         )}
       </div>
 
-      {/* Print-rapport gebruikt de momenteel geselecteerde match */}
-      <PrintDocument
-        answers={answers}
-        result={result}
-        selectedMatch={selectedMatch}
-        cv={selectedDocs?.cv || ""}
-        brief={selectedDocs?.brief || ""}
-      />
+      <PrintDocument answers={answers} result={result} docsByMatch={docsByMatch} />
     </div>
   );
 }
